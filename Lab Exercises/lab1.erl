@@ -4,7 +4,7 @@
 
 say(A) -> io:format("Hello, ~p~n", [A]).
 
-respond(mike)       -> "Hi mike!";
+respond(mike)        -> "Hi mike!";
 respond(42)          -> meaningoflife;
 respond({mytuple,_}) -> "You gave me a pair but I ignored half of it".
 
