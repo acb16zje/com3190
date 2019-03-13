@@ -48,7 +48,7 @@ farmer(J, N, Worker1_PID, Worker2_PID) ->
 
 worker() ->
   receive
-    {assign, Farmer_PID} -> io:format("Worker received Assign~n", [])
+    {assign, Farmer_PID} -> io:format("Worker~p received Assign~n", [self()])
   end,
   Farmer_PID ! complete,
   worker().
