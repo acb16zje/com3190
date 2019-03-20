@@ -22,3 +22,4 @@ ping1_expect2_test() ->
   ok = expect({ping, PID}),
   PID ! pong,
   ok = expect(finished).
+
