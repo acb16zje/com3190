@@ -1,0 +1,48 @@
+\documentclass[12pt, a4paper]{article}
+\usepackage{amsmath}
+\usepackage[labelfont=bf]{caption}
+\usepackage{csquotes}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage{parskip}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{COM3190}
+\fancyhead[C]{Assignment: Simulating Chemistry}
+\fancyhead[R]{Zer Jun Eng}
+\fancyfoot[C]{\thepage}
+
+\begin{document}
+
+\section{CCS Model}
+\begin{align*}
+CH_3OH &= \overline{c}.(H_2O \mid H_2) + \overline{h}.CH_2OH + \overline{oh}.CH_3 \\
+CH_2OH &= \overline{c}.(H_2O \mid H) + \overline{h}.CHOH + \overline{oh}.CH_2 \\
+CHOH &= \overline{c}.H_2O + \overline{h}.COH + \overline{oh}.CH \\
+\\
+CH_3 &= \overline{c}.H_3 + \overline{h}.CH_2 \\
+CH_2 &= \overline{c}.H_2 + \overline{h}.CH \\
+CH &= \overline{c}.H + \overline{h}.C \\
+\\
+CHOH &= \overline{c}.HOH + \overline{oh}.CH + \overline{h}.COH \\
+COH &= \overline{c}.OH + \overline{oh}.C \\
+\\
+H_3OH &= \overline{h}.H_2OH + \overline{oh}.H_3 \\
+H_2OH &= \overline{h}.HOH + \overline{oh}.H_2 \\
+HOH &= \overline{h}.OH + \overline{oh}.H \\
+\\
+H_3 &= \overline{h}.H_2 \\
+H_2 &= \overline{h}.H \\
+H &= \overline{h}.0 + oh.H_2O \\
+\\
+O_2 &= c.CO_2 + \overline{o}.O \\
+O &= h.OH + \overline{o}.0 \\
+OH &= h.H_2O + \overline{o}.H + \overline{h}.O \\
+C &= o.CO \\
+CO &= o.CO_2
+\end{align*}
+
+
+\end{document}
