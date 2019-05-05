@@ -1,105 +1,118 @@
 -module(chemistry).
+-author("Zer Jun Eng").
 -export([react/2]).
 
-ch3oh(0, _) -> io:format("Run out of CH3OH~n");
-ch3oh(N, O2_PID) ->
-  case rand:uniform(3) of
-    1 ->
-      O2_PID ! c,
-      h3oh(O2_PID);
-    2 ->
-      O2_PID ! h,
-      ch2oh(O2_PID);
-    3 ->
-      O2_PID ! oh,
-      ch3(O2_PID)
-  end,
-  ch3oh(N - 1, O2_PID).
+get_rule(Elem) ->
+  Rules = #{
+    ch3oh => [{snd, c}],
+    h2 => [{rcv, o}],
+    o2 => [{rcv, c}, {snd, o}],
+    o => [{snd, o}]
+  },
+  maps:get(Elem, Rules).
 
-ch2oh(O2_PID) ->
-  case rand:uniform(3) of
-    1 ->
-      O2_PID ! c,
-      h2oh(O2_PID);
-    2 ->
-      O2_PID ! h,
-      choh(O2_PID);
-    3 ->
-      O2_PID ! oh,
-      ch2(O2_PID)
+% -----------------------------------------------------------------------
+
+remove_elements(ElemX, ElemY, Elements) ->
+  [Elem || Elem <- Elements, Elem =/= ElemX, Elem =/= ElemY].
+
+show_elements(Elements) ->
+  io:format("~nCurrent elements: ~p~n", [[Atom || {Atom, _} <- Elements]]).
+
+% -----------------------------------------------------------------------
+
+find_reaction([]) -> [];
+
+find_reaction([{ElemX, PidX} | Elems]) ->
+  Reactions = [{{ElemX, PidX, CommX}, {ElemY, PidY, CommY}, AtomX} ||
+                {ElemY, PidY} <- Elems,
+                {CommX, AtomX} <- get_rule(ElemX),
+                {CommY, AtomY} <- get_rule(ElemY),
+                CommX =/= CommY,
+                AtomX =:= AtomY],
+  case Reactions of
+    [] -> find_reaction(Elems);
+    [Reaction] -> Reaction;
+    [Reaction | _] -> Reaction
   end.
 
-choh(O2_PID) ->
-  case rand:uniform(3) of
-    1 ->
-      O2_PID ! c,
-      hoh(O2_PID);
-    2 ->
-      O2_PID ! h,
-      coh(O2_PID);
-    3 ->
-      O2_PID ! oh,
-      ch(O2_PID)
+% -----------------------------------------------------------------------
+
+send_reaction({{ElemX, PidX, CommX}, {ElemY, PidY, CommY}, Atom}) ->
+  case {CommX, CommY} of
+    {snd, rcv} ->
+      PidX ! {Atom, PidY},
+      io:format("~p --~p--> ~p~n", [ElemX, Atom, ElemY]);
+    {rcv, snd} ->
+      PidY ! {Atom, PidX},
+      io:format("~p --~p--> ~p~n", [ElemY, Atom, ElemX])
   end.
 
-ch3(O2_PID) ->
-  case rand:uniform(2) of
-    1 ->
-      O2_PID ! c
-      h3(O2_PID);
-    2 ->
-      O2_PID ! h,
-      ch2(O2_PID)
+% -----------------------------------------------------------------------
+
+start_reaction(Elements) ->
+  show_elements(Elements),
+  Reaction = find_reaction(Elements),
+  case Reaction of
+    [] -> ok;
+    {{ElemX, PidX, _}, {ElemY, PidY, _}, _} ->
+      send_reaction(Reaction),
+      UpdatedElements = remove_elements({ElemX, PidX}, {ElemY, PidY}, Elements),
+      receive
+        nil -> start_reaction(UpdatedElements);
+        NewProc -> start_reaction([NewProc | UpdatedElements])
+      end
   end.
 
-ch2(O2_PID) ->
-  case rand:uniform(2) of
-    1 ->
-      O2_PID ! c,
-      h2(O2_PID);
-    2 ->
-      O2_PID ! h,
-      ch(O2_PID)
+% -----------------------------------------------------------------------
+
+ch3oh() ->
+  receive
+    {c, To} ->
+      To ! {c, ch3oh},
+      whereis(start) ! {h2, spawn(fun() -> h2() end)},
+      h2o()
   end.
 
-ch(O2_PID) ->
-  case rand:uniform(2) of
-    1 ->
-      O2_PID ! c,
-      h(O2_PID);
-    2 ->
-      O2_PID ! h,
-      c()
+h2() ->
+  receive
+    {o, From} ->
+      io:format("h2 <--o-- ~p~n", [From]),
+      h2o()
   end.
 
-coh(O2_PID) ->
-  case rand:uniform(2) of
-    1 ->
-      O2_PID ! c,
-      oh()
+o2() ->
+  receive
+    {c, From} ->
+      io:format("o2 <--c-- ~p~n", [From]),
+      co2();
+    {o, To} ->
+      To ! {o, o2},
+      whereis(start) ! {o, spawn(fun() -> o() end)}
   end.
 
-h3oh(O2_PID) -> ok.
-h2oh() -> ok.
-hoh() -> ok.
+o() ->
+  receive
+    {o, To} ->
+      To ! {o, o},
+      whereis(start) ! nil
+  end.
 
-h3() -> ok.
-h2() -> ok.
-h() -> ok.
+h2o() -> io:format("").
 
-o2(0) ->
-  io:format("Run out of O2~n"),
-  ok;
+co2() -> io:format("").
 
-o2(N) -> ok.
-o() -> ok.
-oh() -> ok.
-c() -> ok.
-co() -> ok.
-
-h2o() -> io:format("H2O~n").
-co2() -> io:format("CO2~n").
-
+% -----------------------------------------------------------------------
+react(0, 0) ->
+  io:format("No CH3OH provided~n"),
+  io:format("No O2 provided~n");
+react(0, _) ->
+  io:format("No CH3OH provided~n");
+react(_, 0) ->
+  io:format("No O2 provided~n");
 react(Methanol, Oxygen) ->
-  O2_PID = spawn(?MODULE, o2, [Oxygen]),
-  spawn(?MODULE, ch3oh, [Methanol, O2_PID]).
+  Elements = lists:merge(
+    [{ch3oh, spawn(fun() -> ch3oh() end)} || _ <- lists:seq(1, Methanol)],
+    [{o2, spawn(fun() -> o2() end)} || _ <- lists:seq(1, Oxygen)]
+  ),
+  register(start, spawn(fun() -> start_reaction(Elements) end)).
