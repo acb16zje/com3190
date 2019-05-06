@@ -1,30 +1,73 @@
+% @author Zer Jun Eng
 -module(chemistry).
--author("Zer Jun Eng").
--export([react/2]).
+-export([react/2, get_rule/1]).
 
+-type element() :: {atom(), pid()}.
+-type reaction() :: {{element(), atom()}, {element(), atom()}, atom()}.
+
+% -----------------------------------------------------------------------
+-spec get_rule(atom()) -> list().
 get_rule(Elem) ->
   Rules = #{
-    ch3oh => [{snd, c}],
-    h2 => [{rcv, o}],
+    ch3oh => [{snd, c}, {snd, h}, {snd, oh}],
+    ch2oh => [{snd, c}, {snd, h}, {snd, oh}],
+    coh => [{snd, c}, {snd, oh}],
+    ch3 => [{snd, c}, {snd, h}],
+    h2 => [{rcv, o}, {snd, h}],
+    h => [{rcv, oh}, {snd, h}],
     o2 => [{rcv, c}, {snd, o}],
-    o => [{snd, o}]
+    o => [{rcv, h}, {snd, o}],
+    oh => [{rcv, h}, {snd, o}, {snd, h}],
+    c => [{rcv, o}],
+    co => [{rcv, o}]
   },
   maps:get(Elem, Rules).
 
 % -----------------------------------------------------------------------
+-spec spawn_element(atom()) -> element().
+
+spawn_element(Elem) ->
+  case Elem of
+    ch3oh -> {ch3oh, spawn(fun() -> ch3oh() end)};
+    ch2oh -> {ch2oh, spawn(fun() -> ch2oh() end)};
+    coh -> {coh, spawn(fun() -> coh() end)};
+    ch3 -> {ch3, spawn(fun() -> ch3() end)};
+    h2 -> {h2, spawn(fun() -> h2() end)};
+    h -> {h, spawn(fun() -> h() end)};
+    o2 -> {o2, spawn(fun() -> o2() end)};
+    o -> {o, spawn(fun() -> o() end)};
+    oh -> {oh, spawn(fun() -> oh() end)};
+    c -> {c, spawn(fun() -> c() end)};
+    co -> {co, spawn(fun() -> co() end)}
+  end.
+
+% -----------------------------------------------------------------------
+-spec spawn_elements([atom()]) -> [element()].
+
+spawn_elements([]) -> [];
+
+spawn_elements([Elem]) -> [spawn_element(Elem)];
+
+spawn_elements([Elem | Elements]) -> [spawn_element(Elem) | spawn_elements(Elements)].
+
+% -----------------------------------------------------------------------
+-spec remove_elements(element(), element(), [element()]) -> [element()].
 
 remove_elements(ElemX, ElemY, Elements) ->
   [Elem || Elem <- Elements, Elem =/= ElemX, Elem =/= ElemY].
 
+-spec show_elements([element()]) -> none().
+
 show_elements(Elements) ->
-  io:format("~nCurrent elements: ~p~n", [[Atom || {Atom, _} <- Elements]]).
+  io:format("~nReactants left: ~p~n", [[Atom || {Atom, _} <- Elements]]).
 
 % -----------------------------------------------------------------------
+-spec find_reaction([element()]) -> none().
 
 find_reaction([]) -> [];
 
 find_reaction([{ElemX, PidX} | Elems]) ->
-  Reactions = [{{ElemX, PidX, CommX}, {ElemY, PidY, CommY}, AtomX} ||
+  Reactions = [{{{ElemX, PidX}, CommX}, {{ElemY, PidY}, CommY}, AtomX} ||
                 {ElemY, PidY} <- Elems,
                 {CommX, AtomX} <- get_rule(ElemX),
                 {CommY, AtomY} <- get_rule(ElemY),
@@ -33,86 +76,247 @@ find_reaction([{ElemX, PidX} | Elems]) ->
   case Reactions of
     [] -> find_reaction(Elems);
     [Reaction] -> Reaction;
-    [Reaction | _] -> Reaction
+    [_ | _] ->
+      Index = rand:uniform(length(Reactions)),
+      lists:nth(Index, Reactions)
   end.
 
 % -----------------------------------------------------------------------
+-spec perform_reaction(reaction()) -> none().
 
-send_reaction({{ElemX, PidX, CommX}, {ElemY, PidY, CommY}, Atom}) ->
+perform_reaction({{{ElemX, PidX}, CommX}, {{ElemY, PidY}, CommY}, Atom}) ->
   case {CommX, CommY} of
     {snd, rcv} ->
-      PidX ! {Atom, PidY},
+      PidX ! {snd, Atom, PidY},
       io:format("~p --~p--> ~p~n", [ElemX, Atom, ElemY]);
     {rcv, snd} ->
-      PidY ! {Atom, PidX},
+      PidY ! {snd, Atom, PidX},
       io:format("~p --~p--> ~p~n", [ElemY, Atom, ElemX])
   end.
 
 % -----------------------------------------------------------------------
+-spec start_reaction([{atom(), pid()}]) -> none().
 
 start_reaction(Elements) ->
   show_elements(Elements),
   Reaction = find_reaction(Elements),
+
   case Reaction of
-    [] -> ok;
-    {{ElemX, PidX, _}, {ElemY, PidY, _}, _} ->
-      send_reaction(Reaction),
-      UpdatedElements = remove_elements({ElemX, PidX}, {ElemY, PidY}, Elements),
+    [] ->
+      whereis(result) ! {finished, Elements};
+
+    {{ElemX, _}, {ElemY, _}, _} ->
+      perform_reaction(Reaction),
+      NewElements = remove_elements(ElemX, ElemY, Elements),
+
       receive
-        nil -> start_reaction(UpdatedElements);
-        NewProc -> start_reaction([NewProc | UpdatedElements])
+        NewProcs ->
+          start_reaction(lists:merge(NewProcs, NewElements))
       end
+  end.
+
+% -----------------------------------------------------------------------
+-spec show_result(integer(), integer()) -> none().
+
+show_result(CO2, H2O) ->
+  receive
+    {finished, []} ->
+      io:format("Final products: ~pCO2 + ~pH2O~n", [CO2, H2O]),
+      io:format("Status        : Complete combustion~n");
+    {finished, Elements} ->
+      io:format("Final products: ~pCO2 + ~pH2O~n", [CO2, H2O]),
+      io:format("Status        : Incomplete combustion~n");
+    co2 ->
+      show_result(CO2 + 1, H2O);
+    h2o ->
+      show_result(CO2, H2O + 1)
   end.
 
 % -----------------------------------------------------------------------
 
 ch3oh() ->
   receive
-    {c, To} ->
-      To ! {c, ch3oh},
-      whereis(start) ! {h2, spawn(fun() -> h2() end)},
-      h2o()
+    {snd, c, To} ->
+      To ! {rcv, c, ch3oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([h2, h, oh] ++ E)
+      end;
+
+    {snd, h, To} ->
+      To ! {rcv, h, ch3oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([ch2oh | E])
+      end;
+
+    {snd, oh, To} ->
+      To ! {rcv, oh, ch3oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([ch3 | E])
+      end
+  end.
+
+ch2oh() ->
+  receive
+    {snd, c, To} ->
+      To ! {rcv, c, ch2oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([h, h, oh] ++ E)
+      end;
+
+    {snd, h, To} ->
+      To ! {rcv, h, ch2oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([coh, h] ++ E)
+      end;
+
+    {snd, oh, To} ->
+      To ! {rcv, oh, ch2oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([c, h2] ++ E)
+      end
+  end.
+
+coh() ->
+  receive
+    {snd, c, To} ->
+      To ! {rcv, c, coh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([oh | E])
+      end;
+
+    {snd, oh, To} ->
+      To ! {rcv, oh, coh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([c | E])
+      end
+  end.
+
+ch3() ->
+  receive
+    {snd, c, To} ->
+      To ! {rcv, c, ch3, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([h2, h] ++ E)
+      end;
+
+    {snd, h, To} ->
+      To ! {rcv, h, ch3, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([c, h2] ++ E)
+      end
   end.
 
 h2() ->
   receive
-    {o, From} ->
+    {rcv, o, From, Pid} ->
       io:format("h2 <--o-- ~p~n", [From]),
-      h2o()
+      h2o(),
+      Pid ! {ok, []};
+
+    {snd, h, To} ->
+      To ! {rcv, h, h2, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([h | E])
+      end
+  end.
+
+h() ->
+  receive
+    {rcv, oh, From, Pid} ->
+      io:format("h <--oh-- ~p~n", [From]),
+      h2o(),
+      Pid ! {ok, []};
+
+    {snd, h, To} ->
+      To ! {rcv, h, h, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements(E)
+      end
   end.
 
 o2() ->
   receive
-    {c, From} ->
+    {rcv, c, From, Pid} ->
       io:format("o2 <--c-- ~p~n", [From]),
-      co2();
-    {o, To} ->
-      To ! {o, o2},
-      whereis(start) ! {o, spawn(fun() -> o() end)}
+      co2(),
+      Pid ! {ok, []};
+
+    {snd, o, To} ->
+      To ! {rcv, o, o2, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([o | E])
+      end
   end.
 
 o() ->
   receive
-    {o, To} ->
-      To ! {o, o},
-      whereis(start) ! nil
+    {rcv, h, From, Pid} ->
+      io:format("o <--h-- ~p~n", [From]),
+      Pid ! {ok, [oh]};
+
+    {snd, o, To} ->
+      To ! {rcv, o, o, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements(E)
+      end
   end.
 
-h2o() -> io:format("").
+oh() ->
+  receive
+    {rcv, h, From, Pid} ->
+      io:format("oh <--h-- ~p~n", [From]),
+      h2o(),
+      Pid ! {ok, []};
 
-co2() -> io:format("").
+    {snd, o, To} ->
+      To ! {rcv, o, oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([h | E])
+      end;
+
+    {snd, h, To} ->
+      To ! {rcv, h, oh, self()},
+      receive
+        {ok, E} -> whereis(start) ! spawn_elements([o | E])
+      end
+  end.
+
+c() ->
+  receive
+    {rcv, o, From, Pid} ->
+      io:format("c <--o-- ~p~n", [From]),
+      Pid ! {ok, [co]}
+  end.
+
+co() ->
+  receive
+    {rcv, o, From, Pid} ->
+      io:format("co <--o-- ~p~n", [From]),
+      co2(),
+      Pid ! {ok, []}
+  end.
+
+h2o() -> whereis(result) ! h2o.
+
+co2() -> whereis(result) ! co2.
 
 % -----------------------------------------------------------------------
+-spec react(integer(), integer()) -> none().
+
 react(0, 0) ->
   io:format("No CH3OH provided~n"),
   io:format("No O2 provided~n");
+
 react(0, _) ->
   io:format("No CH3OH provided~n");
+
 react(_, 0) ->
   io:format("No O2 provided~n");
+
 react(Methanol, Oxygen) ->
   Elements = lists:merge(
-    [{ch3oh, spawn(fun() -> ch3oh() end)} || _ <- lists:seq(1, Methanol)],
-    [{o2, spawn(fun() -> o2() end)} || _ <- lists:seq(1, Oxygen)]
+    [spawn_element(ch3oh) || _ <- lists:seq(1, Methanol)],
+    [spawn_element(o2) || _ <- lists:seq(1, Oxygen)]
   ),
-  register(start, spawn(fun() -> start_reaction(Elements) end)).
+  register(start, spawn(fun() -> start_reaction(Elements) end)),
+  register(result, spawn(fun() -> show_result(0, 0) end)).
