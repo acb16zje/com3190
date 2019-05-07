@@ -7,6 +7,10 @@
 
 % -----------------------------------------------------------------------
 -spec get_rule(atom()) -> list().
+% @doc Get the reaction rule of a given element
+% @param Elem The Element
+% @returns The reaction rule of the given element
+
 get_rule(Elem) ->
   Rules = #{
     ch3oh => [{snd, c}, {snd, h}, {snd, oh}],
@@ -25,6 +29,9 @@ get_rule(Elem) ->
 
 % -----------------------------------------------------------------------
 -spec spawn_element(atom()) -> element().
+% @doc Spawn a process of the given element
+% @param Elem The element to spawn
+% @returns {Element name atom, Element PID}
 
 spawn_element(Elem) ->
   case Elem of
@@ -43,6 +50,9 @@ spawn_element(Elem) ->
 
 % -----------------------------------------------------------------------
 -spec spawn_elements([atom()]) -> [element()].
+% @doc Spawn a list of elements recursively
+% @param Elements A list of elements to spawn
+% @returns A list of element processes, in the form {Element name atom, Element PID}
 
 spawn_elements([]) -> [];
 
@@ -52,17 +62,27 @@ spawn_elements([Elem | Elements]) -> [spawn_element(Elem) | spawn_elements(Eleme
 
 % -----------------------------------------------------------------------
 -spec remove_elements(element(), element(), [element()]) -> [element()].
+% @doc
+% @param
+% @returns
 
 remove_elements(ElemX, ElemY, Elements) ->
   [Elem || Elem <- Elements, Elem =/= ElemX, Elem =/= ElemY].
 
+% -----------------------------------------------------------------------
 -spec show_elements([element()]) -> none().
+% @doc
+% @param
+% @returns
 
 show_elements(Elements) ->
   io:format("~nReactants left: ~p~n", [[Atom || {Atom, _} <- Elements]]).
 
 % -----------------------------------------------------------------------
 -spec find_reaction([element()]) -> none().
+% @doc
+% @param
+% @returns
 
 find_reaction([]) -> [];
 
@@ -83,6 +103,9 @@ find_reaction([{ElemX, PidX} | Elems]) ->
 
 % -----------------------------------------------------------------------
 -spec perform_reaction(reaction()) -> none().
+% @doc
+% @param
+% @returns
 
 perform_reaction({{{ElemX, PidX}, CommX}, {{ElemY, PidY}, CommY}, Atom}) ->
   case {CommX, CommY} of
@@ -96,6 +119,9 @@ perform_reaction({{{ElemX, PidX}, CommX}, {{ElemY, PidY}, CommY}, Atom}) ->
 
 % -----------------------------------------------------------------------
 -spec start_reaction([{atom(), pid()}]) -> none().
+% @doc
+% @param
+% @returns
 
 start_reaction(Elements) ->
   show_elements(Elements),
@@ -117,6 +143,9 @@ start_reaction(Elements) ->
 
 % -----------------------------------------------------------------------
 -spec show_result(integer(), integer()) -> none().
+% @doc
+% @param
+% @returns
 
 show_result(CO2, H2O) ->
   receive
@@ -302,6 +331,9 @@ co2() -> whereis(result) ! co2.
 
 % -----------------------------------------------------------------------
 -spec react(integer(), integer()) -> none().
+% @doc
+% @param
+% @returns
 
 react(0, 0) ->
   io:format("No CH3OH provided~n"),
