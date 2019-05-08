@@ -1,17 +1,17 @@
 % @author Zer Jun Eng
 -module(chemistry).
--export([react/2, get_rule/1]).
+-export([react/2]).
 
--type element() :: {atom(), pid()}.
--type reaction() :: {{element(), atom()}, {element(), atom()}, atom()}.
+-type reactant() :: {atom(), pid()}.
+-type reaction() :: {{reactant(), atom()}, {reactant(), atom()}, atom()}.
 
 % -----------------------------------------------------------------------
 -spec get_rule(atom()) -> list().
-% @doc Get the reaction rule of a given element
-% @param Elem The Element
-% @returns The reaction rule of the given element
+% @doc Get the reaction rule of a given reactant
+% @param Reactant The reactant
+% @returns The reaction rule of the given reactant
 
-get_rule(Elem) ->
+get_rule(Reactant) ->
   Rules = #{
     ch3oh => [{snd, c}, {snd, h}, {snd, oh}],
     ch2oh => [{snd, c}, {snd, h}, {snd, oh}],
@@ -21,20 +21,20 @@ get_rule(Elem) ->
     h => [{rcv, oh}, {snd, h}],
     o2 => [{rcv, c}, {snd, o}],
     o => [{rcv, h}, {snd, o}],
-    oh => [{rcv, h}, {snd, o}, {snd, h}],
+    oh => [{rcv, h}, {snd, o}],
     c => [{rcv, o}],
     co => [{rcv, o}]
   },
-  maps:get(Elem, Rules).
+  maps:get(Reactant, Rules).
 
 % -----------------------------------------------------------------------
--spec spawn_element(atom()) -> element().
-% @doc Spawn a process of the given element
-% @param Elem The element to spawn
-% @returns {Element name atom, Element PID}
+-spec spawn_reactant(atom()) -> reactant().
+% @doc Spawn a new process of a given reactant
+% @param Reactant The reactant to spawn
+% @returns {Reactant atom, Reactant PID}
 
-spawn_element(Elem) ->
-  case Elem of
+spawn_reactant(Reactant) ->
+  case Reactant of
     ch3oh -> {ch3oh, spawn(fun() -> ch3oh() end)};
     ch2oh -> {ch2oh, spawn(fun() -> ch2oh() end)};
     coh -> {coh, spawn(fun() -> coh() end)};
@@ -49,52 +49,54 @@ spawn_element(Elem) ->
   end.
 
 % -----------------------------------------------------------------------
--spec spawn_elements([atom()]) -> [element()].
-% @doc Spawn a list of elements recursively
-% @param Elements A list of elements to spawn
-% @returns A list of element processes, in the form {Element name atom, Element PID}
+-spec spawn_reactants([atom()]) -> [reactant()].
+% @doc Spawn a list of reactants recursively
+% @param Elements A list of reactants to spawn
+% @returns A list of reactant processes, in the form {Reactant atom, Reactant PID}
 
-spawn_elements([]) -> [];
+spawn_reactants([]) -> [];
 
-spawn_elements([Elem]) -> [spawn_element(Elem)];
+spawn_reactants([Reactant]) -> [spawn_reactant(Reactant)];
 
-spawn_elements([Elem | Elements]) -> [spawn_element(Elem) | spawn_elements(Elements)].
-
-% -----------------------------------------------------------------------
--spec remove_elements(element(), element(), [element()]) -> [element()].
-% @doc
-% @param
-% @returns
-
-remove_elements(ElemX, ElemY, Elements) ->
-  [Elem || Elem <- Elements, Elem =/= ElemX, Elem =/= ElemY].
+spawn_reactants([H | T]) -> [spawn_reactant(H) | spawn_reactants(T)].
 
 % -----------------------------------------------------------------------
--spec show_elements([element()]) -> none().
-% @doc
-% @param
-% @returns
+-spec remove_reactants(reactant(), reactant(), [reactant()]) -> [reactant()].
+% @doc Remove X and Y from a list of reactants
+% @param X A reactant
+% @param Y A reactant
+% @param Reactants A list of reactants
+% @returns A new list of updated reactants
 
-show_elements(Elements) ->
-  io:format("~nReactants left: ~p~n", [[Atom || {Atom, _} <- Elements]]).
+remove_reactants(R1, R2, Reactants) ->
+  [Reactant || Reactant <- Reactants, Reactant =/= R1, Reactant =/= R2].
 
 % -----------------------------------------------------------------------
--spec find_reaction([element()]) -> none().
-% @doc
-% @param
-% @returns
+-spec show_reactants([reactant()]) -> none().
+% @doc Shows the reactants left
+% @param A list of reactants left
+
+show_reactants(Reactants) ->
+  io:format("~nReactants left: ~p~n", [[R || {R, _} <- Reactants]]).
+
+% -----------------------------------------------------------------------
+-spec find_reaction([reactant()]) -> none().
+% @doc Find possible reaction in a list of reactants
+% @param A list of reactants
+% @returns A randomly chosen reaction
 
 find_reaction([]) -> [];
 
-find_reaction([{ElemX, PidX} | Elems]) ->
-  Reactions = [{{{ElemX, PidX}, CommX}, {{ElemY, PidY}, CommY}, AtomX} ||
-                {ElemY, PidY} <- Elems,
-                {CommX, AtomX} <- get_rule(ElemX),
-                {CommY, AtomY} <- get_rule(ElemY),
-                CommX =/= CommY,
-                AtomX =:= AtomY],
+find_reaction([{R1, R1_Pid} | Reactants]) ->
+  % find snd, rcv pair that sync on the same action
+  Reactions = [{{{R1, R1_Pid}, R1_Comm}, {{R2, R2_Pid}, R2_Comm}, R1_Action} ||
+                {R2, R2_Pid} <- Reactants,
+                {R1_Comm, R1_Action} <- get_rule(R1),
+                {R2_Comm, R2_Action} <- get_rule(R2),
+                R1_Comm =/= R2_Comm,
+                R1_Action =:= R2_Action],
   case Reactions of
-    [] -> find_reaction(Elems);
+    [] -> find_reaction(Reactants);
     [Reaction] -> Reaction;
     [_ | _] ->
       Index = rand:uniform(length(Reactions)),
@@ -103,62 +105,109 @@ find_reaction([{ElemX, PidX} | Elems]) ->
 
 % -----------------------------------------------------------------------
 -spec perform_reaction(reaction()) -> none().
-% @doc
-% @param
-% @returns
+% @doc Perform a reaction
+% @param A reaction
 
-perform_reaction({{{ElemX, PidX}, CommX}, {{ElemY, PidY}, CommY}, Atom}) ->
-  case {CommX, CommY} of
+perform_reaction({{{R1, R1_Pid}, R1_Comm}, {{R2, R2_Pid}, R2_Comm}, Action}) ->
+  case {R1_Comm, R2_Comm} of
     {snd, rcv} ->
-      PidX ! {snd, Atom, PidY},
-      io:format("~p --~p--> ~p~n", [ElemX, Atom, ElemY]);
+      % Reactant 1 sends Action to Reactant 2
+      R1_Pid ! {snd, Action, R2_Pid},
+      io:format("~p --~p--> ~p~n", [R1, Action, R2]);
     {rcv, snd} ->
-      PidY ! {snd, Atom, PidX},
-      io:format("~p --~p--> ~p~n", [ElemY, Atom, ElemX])
+      % Reactant 2 sends Action to Reactant 1
+      R2_Pid ! {snd, Action, R1_Pid},
+      io:format("~p --~p--> ~p~n", [R2, Action, R1])
   end.
 
 % -----------------------------------------------------------------------
 -spec start_reaction([{atom(), pid()}]) -> none().
 % @doc
-% @param
-% @returns
+% @param Reactants The list of reactants
 
-start_reaction(Elements) ->
-  show_elements(Elements),
-  Reaction = find_reaction(Elements),
+start_reaction(Reactants) ->
+  % Show traces
+  show_reactants(Reactants),
 
+  Reaction = find_reaction(Reactants),
   case Reaction of
-    [] ->
-      whereis(result) ! {finished, Elements};
+    % No possible reactions left, end and show results
+    [] -> whereis(result) ! {finished, Reactants};
 
-    {{ElemX, _}, {ElemY, _}, _} ->
+    % Randomly chosen reaction returned
+    {{R1, _}, {R2, _}, _} ->
       perform_reaction(Reaction),
-      NewElements = remove_elements(ElemX, ElemY, Elements),
 
+      % Remove the two reactans reacted after the reaction
+      NewReactants = remove_reactants(R1, R2, Reactants),
+
+      % Wait until the reaction has finished, then repeat again
       receive
-        NewProcs ->
-          start_reaction(lists:merge(NewProcs, NewElements))
+        NewProcesses ->
+          start_reaction(lists:merge(NewProcesses, NewReactants))
       end
   end.
 
 % -----------------------------------------------------------------------
 -spec show_result(integer(), integer()) -> none().
-% @doc
-% @param
-% @returns
+% @doc Show the final results when
+% @param CO2 The number of CO2 produced
+% @param H2O The number of H2O produced
 
 show_result(CO2, H2O) ->
   receive
     {finished, []} ->
       io:format("Final products: ~pCO2 + ~pH2O~n", [CO2, H2O]),
       io:format("Status        : Complete combustion~n");
-    {finished, Elements} ->
-      io:format("Final products: ~pCO2 + ~pH2O~n", [CO2, H2O]),
-      io:format("Status        : Incomplete combustion~n");
+    {finished, Reactants} ->
+      io:format("Final products: ~pCO2 + ~pH2O", [CO2, H2O]),
+      count_reactants_left(Reactants),
+      show_status(Reactants);
     co2 ->
       show_result(CO2 + 1, H2O);
     h2o ->
       show_result(CO2, H2O + 1)
+  end.
+
+% -----------------------------------------------------------------------
+-spec count_reactants_left([reactant()]) -> none().
+% @doc Count the number of each reactant left
+% @param The list of reactants left
+
+count_reactants_left(Reactants) ->
+  % No duplicate reactant
+  ReactantsAtom = [R || {R, _} <- Reactants],
+  NoDup = sets:to_list(sets:from_list(ReactantsAtom)),
+  count_reactants_left(NoDup, ReactantsAtom).
+
+count_reactants_left([], _) -> io:format("~n");
+
+count_reactants_left([H | T], Reactants) ->
+  count_reactant_in_list(H, Reactants),
+  count_reactants_left(T, Reactants).
+
+-spec count_reactant_in_list(atom(), [reactant()]) -> none().
+% @doc Count the number of the given reactant in the list of reactants left
+% @param Reactant The reactant to count
+% @param Reactants The list of reactants left
+
+count_reactant_in_list(Reactant, Reactants) ->
+  Count = length([1 || R <- Reactants, R =:= Reactant]),
+  io:format(" + ~p~s", [Count, string:uppercase(atom_to_list(Reactant))]).
+
+% -----------------------------------------------------------------------
+-spec show_status([reactant()]) -> none().
+% @doc Show the final reaction status
+% @param Reactants The list of reactants left
+
+show_status(Reactants) ->
+  ReactantsAtom = [R || {R, _} <- Reactants],
+  HasOxide = lists:member(o, ReactantsAtom) or lists:member(o2, ReactantsAtom),
+  if
+    HasOxide  ->
+      io:format("Status        : Run out of CH3OH, excess O2 provided~n");
+    true ->
+      io:format("Status        : Run out of O2~n")
   end.
 
 % -----------------------------------------------------------------------
@@ -168,19 +217,19 @@ ch3oh() ->
     {snd, c, To} ->
       To ! {rcv, c, ch3oh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([h2, h, oh] ++ E)
+        {ok, R} -> whereis(start) ! spawn_reactants([h2, h, oh] ++ R)
       end;
 
     {snd, h, To} ->
       To ! {rcv, h, ch3oh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([ch2oh | E])
+        {ok, R} -> whereis(start) ! spawn_reactants([ch2oh | R])
       end;
 
     {snd, oh, To} ->
       To ! {rcv, oh, ch3oh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([ch3 | E])
+        {ok, R} -> whereis(start) ! spawn_reactants([ch3 | R])
       end
   end.
 
@@ -189,19 +238,19 @@ ch2oh() ->
     {snd, c, To} ->
       To ! {rcv, c, ch2oh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([h, h, oh] ++ E)
+        {ok, R} -> whereis(start) ! spawn_reactants([h, h, oh] ++ R)
       end;
 
     {snd, h, To} ->
       To ! {rcv, h, ch2oh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([coh, h] ++ E)
+        {ok, R} -> whereis(start) ! spawn_reactants([coh, h] ++ R)
       end;
 
     {snd, oh, To} ->
       To ! {rcv, oh, ch2oh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([c, h2] ++ E)
+        {ok, R} -> whereis(start) ! spawn_reactants([c, h2] ++ R)
       end
   end.
 
@@ -210,13 +259,13 @@ coh() ->
     {snd, c, To} ->
       To ! {rcv, c, coh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([oh | E])
+        {ok, R} -> whereis(start) ! spawn_reactants([oh | R])
       end;
 
     {snd, oh, To} ->
       To ! {rcv, oh, coh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([c | E])
+        {ok, R} -> whereis(start) ! spawn_reactants([c | R])
       end
   end.
 
@@ -225,13 +274,13 @@ ch3() ->
     {snd, c, To} ->
       To ! {rcv, c, ch3, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([h2, h] ++ E)
+        {ok, R} -> whereis(start) ! spawn_reactants([h2, h] ++ R)
       end;
 
     {snd, h, To} ->
       To ! {rcv, h, ch3, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([c, h2] ++ E)
+        {ok, R} -> whereis(start) ! spawn_reactants([c, h2] ++ R)
       end
   end.
 
@@ -245,7 +294,7 @@ h2() ->
     {snd, h, To} ->
       To ! {rcv, h, h2, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([h | E])
+        {ok, R} -> whereis(start) ! spawn_reactants([h | R])
       end
   end.
 
@@ -259,7 +308,7 @@ h() ->
     {snd, h, To} ->
       To ! {rcv, h, h, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements(E)
+        {ok, R} -> whereis(start) ! spawn_reactants(R)
       end
   end.
 
@@ -273,7 +322,7 @@ o2() ->
     {snd, o, To} ->
       To ! {rcv, o, o2, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([o | E])
+        {ok, R} -> whereis(start) ! spawn_reactants([o | R])
       end
   end.
 
@@ -286,7 +335,7 @@ o() ->
     {snd, o, To} ->
       To ! {rcv, o, o, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements(E)
+        {ok, R} -> whereis(start) ! spawn_reactants(R)
       end
   end.
 
@@ -300,13 +349,7 @@ oh() ->
     {snd, o, To} ->
       To ! {rcv, o, oh, self()},
       receive
-        {ok, E} -> whereis(start) ! spawn_elements([h | E])
-      end;
-
-    {snd, h, To} ->
-      To ! {rcv, h, oh, self()},
-      receive
-        {ok, E} -> whereis(start) ! spawn_elements([o | E])
+        {ok, R} -> whereis(start) ! spawn_reactants([h | R])
       end
   end.
 
@@ -331,9 +374,9 @@ co2() -> whereis(result) ! co2.
 
 % -----------------------------------------------------------------------
 -spec react(integer(), integer()) -> none().
-% @doc
-% @param
-% @returns
+% @doc Starts the combustion of Methanol
+% @param Methanol The number of CH3OH molecules
+% @param Oxygen The number of O2 molecules
 
 react(0, 0) ->
   io:format("No CH3OH provided~n"),
@@ -346,9 +389,9 @@ react(_, 0) ->
   io:format("No O2 provided~n");
 
 react(Methanol, Oxygen) ->
-  Elements = lists:merge(
-    [spawn_element(ch3oh) || _ <- lists:seq(1, Methanol)],
-    [spawn_element(o2) || _ <- lists:seq(1, Oxygen)]
+  Reactants = lists:merge(
+    [spawn_reactant(ch3oh) || _ <- lists:seq(1, Methanol)],
+    [spawn_reactant(o2) || _ <- lists:seq(1, Oxygen)]
   ),
-  register(start, spawn(fun() -> start_reaction(Elements) end)),
+  register(start, spawn(fun() -> start_reaction(Reactants) end)),
   register(result, spawn(fun() -> show_result(0, 0) end)).
