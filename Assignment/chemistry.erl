@@ -1,12 +1,25 @@
 % @author Zer Jun Eng
 -module(chemistry).
+
+%%%%%%% For EUnit testing %%%%%%%
+-export([
+  get_rule/1,
+  spawn_reactant/1,
+  spawn_reactants/1,
+  remove_reactants/3,
+  find_reaction/1,
+  ch3oh/0,
+  c/0]
+).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 -export([react/2]).
 
 -type reactant() :: {atom(), pid()}.
 -type reaction() :: {{reactant(), atom()}, {reactant(), atom()}, atom()}.
 
-% -----------------------------------------------------------------------
--spec get_rule(atom()) -> list().
+% -----------------------------------------------------------------------------
+% -spec get_rule(atom()) -> list().
 % @doc Get the reaction rule of a given reactant
 % @param Reactant The reactant
 % @returns The reaction rule of the given reactant
@@ -27,7 +40,7 @@ get_rule(Reactant) ->
   },
   maps:get(Reactant, Rules).
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec spawn_reactant(atom()) -> reactant().
 % @doc Spawn a new process of a given reactant
 % @param Reactant The reactant to spawn
@@ -48,7 +61,7 @@ spawn_reactant(Reactant) ->
     co -> {co, spawn(fun() -> co() end)}
   end.
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec spawn_reactants([atom()]) -> [reactant()].
 % @doc Spawn a list of reactants recursively
 % @param Elements A list of reactants to spawn
@@ -60,7 +73,7 @@ spawn_reactants([Reactant]) -> [spawn_reactant(Reactant)];
 
 spawn_reactants([H | T]) -> [spawn_reactant(H) | spawn_reactants(T)].
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec remove_reactants(reactant(), reactant(), [reactant()]) -> [reactant()].
 % @doc Remove X and Y from a list of reactants
 % @param X A reactant
@@ -71,7 +84,7 @@ spawn_reactants([H | T]) -> [spawn_reactant(H) | spawn_reactants(T)].
 remove_reactants(R1, R2, Reactants) ->
   [Reactant || Reactant <- Reactants, Reactant =/= R1, Reactant =/= R2].
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec show_reactants([reactant()]) -> none().
 % @doc Shows the reactants left
 % @param A list of reactants left
@@ -79,9 +92,9 @@ remove_reactants(R1, R2, Reactants) ->
 show_reactants(Reactants) ->
   io:format("~nReactants left: ~p~n", [[R || {R, _} <- Reactants]]).
 
-% -----------------------------------------------------------------------
--spec find_reaction([reactant()]) -> none().
-% @doc Find possible reaction in a list of reactants
+% -----------------------------------------------------------------------------
+-spec find_reaction([reactant()]) -> reaction().
+% @doc Find one possible reaction randomly in a list of reactants
 % @param A list of reactants
 % @returns A randomly chosen reaction
 
@@ -98,6 +111,8 @@ find_reaction([{R1, R1_Pid} | Reactants]) ->
   case Reactions of
     [] -> find_reaction(Reactants);
     [Reaction] -> Reaction;
+
+    % Randomly choose one
     [_ | _] ->
       Index = rand:uniform(length(Reactions)),
       lists:nth(Index, Reactions)
@@ -120,25 +135,27 @@ perform_reaction({{{R1, R1_Pid}, R1_Comm}, {{R2, R2_Pid}, R2_Comm}, Action}) ->
       io:format("~p --~p--> ~p~n", [R2, Action, R1])
   end.
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec start_reaction([{atom(), pid()}]) -> none().
-% @doc
+% @doc Main logic, start the combustion of methanol
 % @param Reactants The list of reactants
 
 start_reaction(Reactants) ->
   % Show traces
   show_reactants(Reactants),
 
+  % Find one randomly chosen reaction
   Reaction = find_reaction(Reactants),
+
   case Reaction of
     % No possible reactions left, end and show results
-    [] -> whereis(result) ! {finished, Reactants};
+    [] -> result ! {finished, Reactants};
 
     % Randomly chosen reaction returned
     {{R1, _}, {R2, _}, _} ->
       perform_reaction(Reaction),
 
-      % Remove the two reactans reacted after the reaction
+      % Remove the two reactants reacted after the reaction
       NewReactants = remove_reactants(R1, R2, Reactants),
 
       % Wait until the reaction has finished, then repeat again
@@ -148,7 +165,7 @@ start_reaction(Reactants) ->
       end
   end.
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec show_result(integer(), integer()) -> none().
 % @doc Show the final results when
 % @param CO2 The number of CO2 produced
@@ -169,7 +186,7 @@ show_result(CO2, H2O) ->
       show_result(CO2, H2O + 1)
   end.
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec count_reactants_left([reactant()]) -> none().
 % @doc Count the number of each reactant left
 % @param The list of reactants left
@@ -195,14 +212,16 @@ count_reactant_in_list(Reactant, Reactants) ->
   Count = length([1 || R <- Reactants, R =:= Reactant]),
   io:format(" + ~p~s", [Count, string:uppercase(atom_to_list(Reactant))]).
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec show_status([reactant()]) -> none().
 % @doc Show the final reaction status
 % @param Reactants The list of reactants left
 
 show_status(Reactants) ->
   ReactantsAtom = [R || {R, _} <- Reactants],
-  HasOxide = lists:member(o, ReactantsAtom) or lists:member(o2, ReactantsAtom),
+  HasOxide =
+    lists:member(o, ReactantsAtom) or
+    lists:member(o2, ReactantsAtom) or lists:member(oh, ReactantsAtom),
   if
     HasOxide  ->
       io:format("Status        : Run out of CH3OH, excess O2 provided~n");
@@ -210,26 +229,26 @@ show_status(Reactants) ->
       io:format("Status        : Run out of O2~n")
   end.
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 
 ch3oh() ->
   receive
     {snd, c, To} ->
       To ! {rcv, c, ch3oh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([h2, h, oh] ++ R)
+        {ok, R} -> start ! spawn_reactants([h2, h, oh] ++ R)
       end;
 
     {snd, h, To} ->
       To ! {rcv, h, ch3oh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([ch2oh | R])
+        {ok, R} -> start ! spawn_reactants([ch2oh | R])
       end;
 
     {snd, oh, To} ->
       To ! {rcv, oh, ch3oh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([ch3 | R])
+        {ok, R} -> start ! spawn_reactants([ch3 | R])
       end
   end.
 
@@ -238,19 +257,19 @@ ch2oh() ->
     {snd, c, To} ->
       To ! {rcv, c, ch2oh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([h, h, oh] ++ R)
+        {ok, R} -> start ! spawn_reactants([h, h, oh] ++ R)
       end;
 
     {snd, h, To} ->
       To ! {rcv, h, ch2oh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([coh, h] ++ R)
+        {ok, R} -> start ! spawn_reactants([coh, h] ++ R)
       end;
 
     {snd, oh, To} ->
       To ! {rcv, oh, ch2oh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([c, h2] ++ R)
+        {ok, R} -> start ! spawn_reactants([c, h2] ++ R)
       end
   end.
 
@@ -259,13 +278,13 @@ coh() ->
     {snd, c, To} ->
       To ! {rcv, c, coh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([oh | R])
+        {ok, R} -> start ! spawn_reactants([oh | R])
       end;
 
     {snd, oh, To} ->
       To ! {rcv, oh, coh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([c | R])
+        {ok, R} -> start ! spawn_reactants([c | R])
       end
   end.
 
@@ -274,13 +293,13 @@ ch3() ->
     {snd, c, To} ->
       To ! {rcv, c, ch3, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([h2, h] ++ R)
+        {ok, R} -> start ! spawn_reactants([h2, h] ++ R)
       end;
 
     {snd, h, To} ->
       To ! {rcv, h, ch3, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([c, h2] ++ R)
+        {ok, R} -> start ! spawn_reactants([c, h2] ++ R)
       end
   end.
 
@@ -294,7 +313,7 @@ h2() ->
     {snd, h, To} ->
       To ! {rcv, h, h2, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([h | R])
+        {ok, R} -> start ! spawn_reactants([h | R])
       end
   end.
 
@@ -308,7 +327,7 @@ h() ->
     {snd, h, To} ->
       To ! {rcv, h, h, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants(R)
+        {ok, R} -> start ! spawn_reactants(R)
       end
   end.
 
@@ -322,7 +341,7 @@ o2() ->
     {snd, o, To} ->
       To ! {rcv, o, o2, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([o | R])
+        {ok, R} -> start ! spawn_reactants([o | R])
       end
   end.
 
@@ -335,7 +354,7 @@ o() ->
     {snd, o, To} ->
       To ! {rcv, o, o, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants(R)
+        {ok, R} -> start ! spawn_reactants(R)
       end
   end.
 
@@ -349,7 +368,7 @@ oh() ->
     {snd, o, To} ->
       To ! {rcv, o, oh, self()},
       receive
-        {ok, R} -> whereis(start) ! spawn_reactants([h | R])
+        {ok, R} -> start ! spawn_reactants([h | R])
       end
   end.
 
@@ -368,11 +387,11 @@ co() ->
       Pid ! {ok, []}
   end.
 
-h2o() -> whereis(result) ! h2o.
+h2o() -> result ! h2o.
 
-co2() -> whereis(result) ! co2.
+co2() -> result ! co2.
 
-% -----------------------------------------------------------------------
+% -----------------------------------------------------------------------------
 -spec react(integer(), integer()) -> none().
 % @doc Starts the combustion of Methanol
 % @param Methanol The number of CH3OH molecules
